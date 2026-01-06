@@ -3,6 +3,7 @@ import pickle
 import random
 import re
 import textwrap
+import copy
 from functools import partial
 from typing import Any, Dict, List
 
@@ -35,6 +36,104 @@ ACTION_Q = [
 ]
 DEFAULT_EVAL_ITEMS = ["caption", "action"]
 
+def _get_random_obs(obs_dict):
+    obs = copy.deepcopy(obs_dict)
+
+    # RouteField
+    for i in range(len(obs["route_descriptors"])):
+        RouteFieldRandom.randomize(obs["route_descriptors"][i], has_tl=False)
+
+    if random.random() <= 0.75:
+        tl_slot = random.randint(0, len(obs["route_descriptors"]) - 1)
+        RouteFieldRandom.randomize(obs["route_descriptors"][tl_slot], has_tl=True)
+
+    # VehicleField
+    for i in range(len(obs["vehicle_descriptors"])):
+        if random.random() <= 0.25:
+            break
+        VehicleFieldRandom.randomize(obs["vehicle_descriptors"][i])
+
+    # PedestrianField
+    for i in range(len(obs["pedestrian_descriptors"])):
+        if random.random() <= 0.3:
+            break
+        PedestrianFieldRandom.randomize(obs["pedestrian_descriptors"][i])
+
+    # EgoField
+    EgoFieldRandom.randomize(obs["ego_vehicle_descriptor"])
+
+    return obs
+
+def generate_legible_scenarios(base_obs, scenario_type="pedestrian_crossing"):
+    obs = _get_random_obs(base_obs)
+
+    if scenario_type == "pedestrian_crossing":
+        if len(obs["pedestrian_descriptors"]) > 0:
+            ped_idx = random.randint(0, len(obs["pedestrian_descriptors"]) - 1)
+            ped = obs["pedestrian_descriptors"][ped_idx]
+
+            PedestrianFieldRandom.randomize(ped)
+            ped[PedestrianField.ACTIVE] = 1.0
+            ped[PedestrianField.CROSSING] = 1.0
+            ped[PedestrianField.X] = 0.0
+            ped[PedestrianField.Y] = 10.0
+
+    elif scenario_type == "car_crossing":
+        if len(obs["vehicle_descriptors"]) > 0:
+            veh_idx = random.randint(0, len(obs["vehicle_descriptors"]) - 1)
+            veh = obs["vehicle_descriptors"][veh_idx]
+
+            VehicleFieldRandom.randomize(veh)
+            veh[VehicleField.ACTIVE] = 1.0
+            veh[VehicleField.DYNAMIC] = 1.0
+            veh[VehicleField.X] = 3.5
+            veh[VehicleField.Y] = 12.0
+            veh[VehicleField.DX] = 0.0
+            veh[VehicleField.DY] = -1.0
+
+    elif scenario_type == "opposite_direction":
+        if len(obs["vehicle_descriptors"]) > 0:
+            veh_idx = random.randint(0, len(obs["vehicle_descriptors"]) - 1)
+            veh = obs["vehicle_descriptors"][veh_idx]
+
+            VehicleFieldRandom.randomize(veh)
+            veh[VehicleField.ACTIVE] = 1.0
+            veh[VehicleField.DY] *= -1.0
+
+    elif scenario_type == "same_direction_front":
+        for i, veh in enumerate(obs["vehicle_descriptors"]):
+            VehicleFieldRandom.randomize(veh)
+            veh[VehicleField.ACTIVE] = 1.0
+            veh[VehicleField.DYNAMIC] = 1.0
+            veh[VehicleField.X] = 0.0
+            veh[VehicleField.Y] = (i + 1) * 10.0
+
+    return obs
+
+
+def build_legible_dataset(base_dataset, n_augments=5):
+    data_dict = {
+        "input": [],
+        "output": [],
+        "route_descriptors": [],
+        "vehicle_descriptors": [],
+        "pedestrian_descriptors": [],
+        "ego_vehicle_descriptor": [],
+    }
+    scenario_types = ["pedestrian_crossing", "car_crossing", "opposite_direction", "same_direction_front"]
+
+    for d in base_dataset:
+        for scenario in scenario_types:
+            for _ in range(n_augments):
+                obs = generate_legible_scenarios(d["observation"], scenario)
+                data_dict["input"].append("")
+                data_dict["output"].append(make_observation_prompt(obs))
+                data_dict["route_descriptors"].append(obs["route_descriptors"])
+                data_dict["vehicle_descriptors"].append(obs["vehicle_descriptors"])
+                data_dict["pedestrian_descriptors"].append(obs["pedestrian_descriptors"])
+                data_dict["ego_vehicle_descriptor"].append(obs["ego_vehicle_descriptor"])
+
+    return DatasetDict(train=Dataset.from_dict(data_dict))
 
 def get_val_data(
     val_data_path,
