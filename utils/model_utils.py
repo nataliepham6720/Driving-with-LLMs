@@ -2,7 +2,7 @@ import os
 from typing import Tuple
 
 import torch
-from peft import LoraConfig, prepare_model_for_int8_training, set_peft_model_state_dict
+from peft import LoraConfig, prepare_model_for_kbit_training, set_peft_model_state_dict
 from transformers import GenerationConfig, LlamaTokenizer
 
 from models.vector_lm import LlamaForCausalLMVectorInput, VectorLMWithLoRA
@@ -72,7 +72,7 @@ def load_model(
         task_type="Vector_LM",
     )
     if load_in_8bit:
-        llama_model = prepare_model_for_int8_training(llama_model)
+        llama_model = prepare_model_for_kbit_training(llama_model)
 
         model = VectorLMWithLoRA(llama_model, lora_config)
         # We can load trainer state only from a full checkpoint
@@ -96,10 +96,14 @@ def load_model(
             if os.path.exists(lora_checkpoint_name):
                 print(f"Loading LoRA model from {lora_checkpoint_name}")
                 lora_weights = torch.load(lora_checkpoint_name, map_location="cpu")
-                model = set_peft_model_state_dict(model, lora_weights)
+                incompatible_lora = set_peft_model_state_dict(model, lora_weights)
+                print("Missing keys:", incompatible_lora.missing_keys)
+                print("Unexpected keys:", incompatible_lora.unexpected_keys)
+                # model = set_peft_model_state_dict(model, lora_weights)
             print(f"Restarting from {checkpoint_name}")
             adapters_weights = torch.load(checkpoint_name, map_location="cpu")
-            model = set_peft_model_state_dict(model, adapters_weights)
+
+            incompatible_adapter = set_peft_model_state_dict(model, adapters_weights)
     else:
         model = VectorLMWithLoRA.from_pretrained(
             llama_model,
