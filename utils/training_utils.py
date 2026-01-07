@@ -554,7 +554,12 @@ def log_txt_as_img(wh, xc, size=10):
     for bi in range(b):
         txt = Image.new("RGB", wh, color="white")
         draw = ImageDraw.Draw(txt)
-        font = ImageFont.truetype("font/DejaVuSans.ttf", size=size)
+        # font = ImageFont.truetype("font/DejaVuSans.ttf", size=size)
+        font_path = "font/DejaVuSans.ttf"
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except Exception:
+            font = ImageFont.load_default()
         nc = int(40 * (wh[0] / 256))
 
         # Split the input string using \n
