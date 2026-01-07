@@ -571,7 +571,10 @@ def log_txt_as_img(wh, xc, size=10):
             wrapped_line = textwrap.wrap(line, width=nc)
             for wrapped_segment in wrapped_line:
                 draw.text((0, y_offset), wrapped_segment, fill="black", font=font)
-                y_offset += font.getsize(wrapped_segment)[1]
+                # y_offset += font.getsize(wrapped_segment)[1]
+                bbox = font.getbbox(wrapped_segment)
+                y_offset += (bbox[3] - bbox[1])
+
 
         txt = np.array(txt).transpose(2, 0, 1) / 127.5 - 1.0
         txts.append(txt)
